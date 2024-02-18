@@ -3,6 +3,7 @@ package com.hobytech.orderservice.service;
 import com.hobytech.orderservice.dto.InventoryResponse;
 import com.hobytech.orderservice.dto.OrderLineItemsDto;
 import com.hobytech.orderservice.dto.OrderRequest;
+import com.hobytech.orderservice.event.OrderPlacedEvent;
 import com.hobytech.orderservice.model.Order;
 import com.hobytech.orderservice.model.OrderLineItems;
 import com.hobytech.orderservice.repository.OrderRepository;
@@ -10,6 +11,7 @@ import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -30,6 +32,8 @@ public class OrderServiceImpl implements OrderService{
     private final WebClient.Builder webClientBuilder;
     @Autowired
     private final Tracer tracer;
+    @Autowired
+    private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
     @Override
     public String placeOrder(OrderRequest orderRequest) {
         Order order = new Order();
@@ -51,6 +55,7 @@ public class OrderServiceImpl implements OrderService{
             boolean allProductsInStock = Arrays.stream(inventoryResponses).allMatch(InventoryResponse::isInStock);
             if (allProductsInStock){
                 orderRepository.save(order);
+                kafkaTemplate.send("notificationTopic", new OrderPlacedEvent(order.getOrderNumber()));
                 return "order placed successfully";
             }else {
                 return "Product is not in stock, please try again later";
